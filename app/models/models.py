@@ -140,3 +140,17 @@ class Signal(Base):
         Index("ix_signals_type_score", "signal_type", "score"),
         Index("ix_signals_created", "created_at"),
     )
+
+
+# ─── User ─────────────────────────────────────────────────────────────────────
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    # None en cuentas creadas con Google (no tienen contraseña)
+    hashed_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Identificador de la cuenta de Google ("sub" del ID token)
+    google_sub: Mapped[str | None] = mapped_column(String(255), unique=True, index=True, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

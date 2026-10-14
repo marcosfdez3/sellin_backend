@@ -1,3 +1,5 @@
+import secrets
+
 from pydantic_settings import BaseSettings
 
 
@@ -24,8 +26,24 @@ class Settings(BaseSettings):
     CLUSTER_DAYS_WINDOW: int = 7
     CLUSTER_MIN_INSIDERS: int = 2
 
+    # Auth — define JWT_SECRET en .env / Render. Si falta, se genera uno aleatorio
+    # en cada arranque (válido en desarrollo, pero cierra todas las sesiones al reiniciar).
+    JWT_SECRET: str = ""
+    JWT_EXPIRE_MINUTES: int = 60 * 24 * 30  # 30 días
+
+    # Límite de intentos de login
+    LOGIN_MAX_FAILED_PER_EMAIL: int = 5   # fallos seguidos antes de bloquear ese email
+    LOGIN_MAX_ATTEMPTS_PER_IP: int = 20   # intentos totales por IP
+    LOGIN_WINDOW_MINUTES: int = 15        # ventana y duración del bloqueo
+
+    # Login con Google — ID de cliente OAuth de tipo "Aplicación web"
+    # (Google Cloud Console). Vacío = login con Google desactivado.
+    GOOGLE_CLIENT_ID: str = ""
+
     class Config:
         env_file = ".env"
 
 
 settings = Settings()
+if not settings.JWT_SECRET:
+    settings.JWT_SECRET = secrets.token_urlsafe(32)

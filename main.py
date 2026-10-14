@@ -15,6 +15,8 @@ from app.core.config import settings
 from app.core.database import init_db, AsyncSessionLocal
 from app.api.signals import router as signals_router
 from app.api.transactions import transactions_router, companies_router
+from app.api.auth import auth_router
+from app.core.security import get_current_user
 from app.services.sync_service import SyncService
 from app.schemas.schemas import SyncStatsOut
 
@@ -74,9 +76,13 @@ app.add_middleware(
 )
 
 # ─── Routers ───────────────────────────────────────────────────────────────────
-app.include_router(signals_router, prefix="/api/v1")
-app.include_router(transactions_router, prefix="/api/v1")
-app.include_router(companies_router, prefix="/api/v1")
+app.include_router(auth_router, prefix="/api/v1")
+
+# Los datos solo se sirven a usuarios con sesión iniciada
+protected = [Depends(get_current_user)]
+app.include_router(signals_router, prefix="/api/v1", dependencies=protected)
+app.include_router(transactions_router, prefix="/api/v1", dependencies=protected)
+app.include_router(companies_router, prefix="/api/v1", dependencies=protected)
 
 
 # ─── Endpoints de utilidad ─────────────────────────────────────────────────────
