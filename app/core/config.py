@@ -19,7 +19,16 @@ class Settings(BaseSettings):
     EDGAR_RATE_LIMIT_DELAY: float = 0.11  # ~9 req/s, bajo el límite de 10
 
     # Scheduler — cada cuántos minutos se sincronizan nuevos Form 4
-    SYNC_INTERVAL_MINUTES: int = 60
+    SYNC_INTERVAL_MINUTES: int = 10
+    # Páginas de 100 filings del feed que se leen como máximo en cada sync
+    # (se para antes al llegar a filings ya procesados)
+    SYNC_MAX_FEED_PAGES: int = 20
+    # Días hacia atrás que se recuperan con el índice diario de EDGAR
+    # al arrancar y cada mañana (rellena huecos si el backend estuvo parado)
+    BACKFILL_DAYS: int = 7
+
+    # Feed de señales — días que se muestran por defecto en la app
+    FEED_DEFAULT_DAYS: int = 30
 
     # Señales — umbrales para generar señales relevantes
     MIN_TRANSACTION_VALUE_USD: float = 0  # sin mínimo por ahora

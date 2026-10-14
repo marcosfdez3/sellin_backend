@@ -57,20 +57,60 @@ class EdgarFetcher:
     # ─── Método principal: ATOM feed ──────────────────────────────────────────
     # Usamos el ATOM feed oficial — más estable que la API de búsqueda interna
 
-    async def get_recent_form4_filings(
-        self,
-        start_date = date.today() - timedelta(days=7),
-        count: int = 40,
-    ) -> list[dict]:
-        """Obtiene Form 4 recientes desde el feed ATOM oficial de EDGAR."""
+    async def get_recent_form4_filings(self, start: int = 0, count: int = 100) -> list[dict]:
+        """
+        Una página del feed ATOM oficial de EDGAR, de más reciente a más antiguo.
+        `start` permite paginar (0, 100, 200…); EDGAR admite como máximo 100 por página.
+        """
         url = (
             f"{settings.EDGAR_BASE_URL}/cgi-bin/browse-edgar"
             f"?action=getcurrent&type=4&dateb=&owner=include"
-            f"&count={count}&search_text=&output=atom"
+            f"&count={count}&start={start}&search_text=&output=atom"
         )
-        logger.info(f"Fetching {count} recent Form 4 filings from ATOM feed")
+        logger.info(f"Fetching Form 4 feed page start={start}")
         response = await self._get(url)
         return self._parse_atom_feed(response.text)
+
+    # ─── Índice diario: todos los Form 4 de un día ────────────────────────────
+
+    async def get_daily_form4_filings(self, day: date) -> list[dict] | None:
+        """
+        Todos los Form 4 presentados en `day`, desde el índice diario de EDGAR.
+        Devuelve None si el índice no existe (fin de semana, festivo o aún no publicado).
+        """
+        quarter = (day.month - 1) // 3 + 1
+        url = (
+            f"{settings.EDGAR_BASE_URL}/Archives/edgar/daily-index/"
+            f"{day.year}/QTR{quarter}/form.{day:%Y%m%d}.idx"
+        )
+        await asyncio.sleep(settings.EDGAR_RATE_LIMIT_DELAY)
+        response = await self._client.get(url, headers=self.base_headers)
+        if response.status_code in (403, 404):
+            return None
+        response.raise_for_status()
+
+        filings = {}
+        for line in response.text.splitlines():
+            # "4   COMPANY NAME   CIK   YYYYMMDD   edgar/data/CIK/0001234567-26-000001.txt"
+            if not line.startswith("4 "):
+                continue
+            m = re.search(r"\s(\d+)\s+(\d{8})\s+edgar/data/(\d+)/([\d-]+)\.txt\s*$", line)
+            if not m:
+                continue
+            _, filed, path_cik, accession = m.groups()
+            if accession in filings:
+                continue  # cada filing aparece una vez por emisor y otra por insider
+            filings[accession] = {
+                "index_url": (
+                    f"{settings.EDGAR_BASE_URL}/Archives/edgar/data/"
+                    f"{path_cik}/{accession.replace('-', '')}/{accession}-index.htm"
+                ),
+                "accession_number": accession,
+                "cik": path_cik.zfill(10),
+                "filed_date": f"{filed[:4]}-{filed[4:6]}-{filed[6:]}",
+            }
+        logger.info(f"Daily index {day}: {len(filings)} Form 4 filings")
+        return list(filings.values())
 
     def _parse_atom_feed(self, xml_text: str) -> list[dict]:
         """
@@ -93,6 +133,7 @@ class EdgarFetcher:
 
         entries = [el for el in root.iter() if el.tag.split("}")[-1] == "entry"]
         filings = []
+        seen_accessions = set()
 
         for entry in entries:
             # Extraer URL del índice desde <link>
@@ -131,8 +172,15 @@ class EdgarFetcher:
 
             filed_date = filed_date_el.text.strip() if filed_date_el is not None and filed_date_el.text else ""
 
+            # Cada filing aparece dos veces (emisor e insider): nos quedamos con una
+            accession = self.accession_from_index_url(index_url)
+            if accession in seen_accessions:
+                continue
+            seen_accessions.add(accession)
+
             filings.append({
                 "index_url": index_url,
+                "accession_number": accession,
                 "company_name": company_name,
                 "cik": cik,
                 "filed_date": filed_date,
@@ -147,30 +195,32 @@ class EdgarFetcher:
         """
         Dado el URL del índice de un filing, descarga el XML puro del Form 4.
         El índice es una página HTML con tabla de documentos.
-        Devuelve (xml_content, accession_number) o None.
+        Devuelve (xml_content, accession_number), o None si el filing no tiene
+        un XML de Form 4. Los errores HTTP se propagan para reintentarlo más tarde.
         """
-        try:
-            response = await self._get(index_url)
-            xml_url, accession = self._find_xml_in_index(response.text, index_url)
+        response = await self._get(index_url)
+        xml_url, accession = self._find_xml_in_index(response.text, index_url)
 
-            if not xml_url:
-                logger.warning(f"No XML found in index: {index_url}")
-                return None
-
-            logger.debug(f"Downloading XML: {xml_url}")
-            xml_response = await self._get(xml_url)
-
-            content = xml_response.text.strip()
-            # Verificar que es XML real, no HTML
-            if content.startswith("<!DOCTYPE") or content.startswith("<html"):
-                logger.warning(f"Got HTML instead of XML from {xml_url}")
-                return None
-
-            return content, accession
-
-        except httpx.HTTPError as e:
-            logger.error(f"HTTP error fetching {index_url}: {e}")
+        if not xml_url:
+            logger.warning(f"No XML found in index: {index_url}")
             return None
+
+        logger.debug(f"Downloading XML: {xml_url}")
+        xml_response = await self._get(xml_url)
+
+        content = xml_response.text.strip()
+        # Verificar que es XML real, no HTML
+        if content.startswith("<!DOCTYPE") or content.startswith("<html"):
+            logger.warning(f"Got HTML instead of XML from {xml_url}")
+            return None
+
+        return content, accession
+
+    @staticmethod
+    def accession_from_index_url(index_url: str) -> str:
+        """.../0001234567-25-000001-index.htm → 0001234567-25-000001"""
+        m = re.search(r"/([\d\-]+)-index\.htm", index_url)
+        return m.group(1) if m else ""
 
     def _find_xml_in_index(self, index_html: str, index_url: str) -> tuple[str | None, str]:
         """
@@ -187,10 +237,7 @@ class EdgarFetcher:
 
         # Extraer accession number de la URL
         # Ej: /Archives/edgar/data/123/000123456725000001/0001234567-25-000001-index.htm
-        accession = ""
-        m = re.search(r"/([\d\-]+)-index\.htm", index_url)
-        if m:
-            accession = m.group(1)
+        accession = self.accession_from_index_url(index_url)
 
         try:
             root = etree.fromstring(index_html.encode(), etree.HTMLParser())

@@ -154,3 +154,16 @@ class User(Base):
     # Identificador de la cuenta de Google ("sub" del ID token)
     google_sub: Mapped[str | None] = mapped_column(String(255), unique=True, index=True, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+# ─── ProcessedFiling ──────────────────────────────────────────────────────────
+
+class ProcessedFiling(Base):
+    """
+    Filings de EDGAR ya procesados, se hayan guardado o descartado
+    (sin XML, sin transacciones relevantes…). Evita volver a descargarlos.
+    """
+    __tablename__ = "processed_filings"
+
+    accession_number: Mapped[str] = mapped_column(String(30), primary_key=True)
+    processed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

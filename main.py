@@ -4,8 +4,10 @@ main.py
 Punto de entrada de la API. Arranca FastAPI, inicializa la BD
 y programa el job de sync con EDGAR.
 """
+import asyncio
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,14 +27,36 @@ logger = logging.getLogger(__name__)
 
 scheduler = AsyncIOScheduler()
 
+# Un solo sync a la vez (feed, backfill o manual) para no procesar dos veces lo mismo
+sync_lock = asyncio.Lock()
+
 
 async def run_sync_job():
-    """Job periódico que EDGAR corre en background."""
-    logger.info("Starting scheduled EDGAR sync...")
-    async with AsyncSessionLocal() as db:
-        service = SyncService()
-        stats = await service.sync_recent_filings(db, count=100)
-        logger.info(f"Sync done: {stats}")
+    """Job periódico: trae lo último del feed de EDGAR."""
+    if sync_lock.locked():
+        logger.info("Sync already running, skipping this run")
+        return
+    async with sync_lock, AsyncSessionLocal() as db:
+        logger.info("Starting scheduled EDGAR sync...")
+        await SyncService().sync_recent_filings(db)
+
+
+async def run_backfill_job():
+    """
+    Rellena huecos con el índice diario de EDGAR (los últimos BACKFILL_DAYS días).
+    Solo descarga lo que falta, así que repetirlo es barato.
+    """
+    today = datetime.now(timezone.utc).date()
+    for days_ago in range(settings.BACKFILL_DAYS, 0, -1):
+        day = today - timedelta(days=days_ago)
+        if day.weekday() >= 5:
+            continue  # la SEC no publica en fin de semana
+        # Lock por día: entre días puede colarse el sync del feed
+        async with sync_lock, AsyncSessionLocal() as db:
+            try:
+                await SyncService().sync_day(db, day)
+            except Exception as e:
+                logger.error(f"Backfill {day} failed: {e}")
 
 
 @asynccontextmanager
@@ -41,6 +65,13 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing database...")
     await init_db()
 
+    async with AsyncSessionLocal() as db:
+        removed = await SyncService().remove_duplicate_signals(db)
+        if removed:
+            logger.info(f"Removed {removed} duplicated signals")
+
+    # Los syncs corren en segundo plano: la API responde desde el primer momento
+    now = datetime.now(timezone.utc)
     logger.info(f"Scheduling EDGAR sync every {settings.SYNC_INTERVAL_MINUTES} minutes")
     scheduler.add_job(
         run_sync_job,
@@ -48,11 +79,20 @@ async def lifespan(app: FastAPI):
         minutes=settings.SYNC_INTERVAL_MINUTES,
         id="edgar_sync",
         replace_existing=True,
+        next_run_time=now,
+    )
+    # El índice diario de la SEC se publica por la noche (hora de EE. UU.)
+    scheduler.add_job(
+        run_backfill_job,
+        "cron",
+        hour=6,
+        minute=0,
+        timezone="UTC",
+        id="edgar_backfill",
+        replace_existing=True,
+        next_run_time=now + timedelta(seconds=30),
     )
     scheduler.start()
-
-    # Sync inicial al arrancar
-    await run_sync_job()
 
     yield
 
@@ -95,9 +135,8 @@ async def health():
 @app.post("/api/v1/admin/sync", response_model=SyncStatsOut)
 async def trigger_sync():
     """Dispara un sync manual. Útil durante desarrollo."""
-    async with AsyncSessionLocal() as db:
-        service = SyncService()
-        stats = await service.sync_recent_filings(db, count=100)
+    async with sync_lock, AsyncSessionLocal() as db:
+        stats = await SyncService().sync_recent_filings(db)
         return SyncStatsOut(**stats)
 
 

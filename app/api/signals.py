@@ -1,8 +1,12 @@
+from datetime import datetime, timedelta
+from typing import Literal
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.models.models import Signal, Transaction, TransactionType, SignalStrength
 from app.schemas.schemas import SignalListOut, SignalOut, TransactionOut
@@ -15,18 +19,26 @@ async def get_signals(
     signal_type: TransactionType | None = Query(None, description="buy | sell"),
     strength: SignalStrength | None = Query(None, description="strong | medium | weak"),
     cluster_only: bool = Query(False, description="Solo señales con múltiples insiders"),
+    sort: Literal["recent", "score"] = Query("recent", description="recent: más recientes primero | score: mejor puntuación"),
+    days: int = Query(settings.FEED_DEFAULT_DAYS, ge=1, le=365, description="Solo señales con actividad en los últimos N días"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Feed principal de señales para la app.
-    Ordenadas por score descendente (más relevantes primero).
+    Por defecto, las más recientes primero (fecha de la última transacción).
     """
+    if sort == "recent":
+        order = (desc(Signal.last_transaction_date), desc(Signal.score))
+    else:
+        order = (desc(Signal.score), desc(Signal.last_transaction_date))
+
     query = (
         select(Signal)
         .options(selectinload(Signal.company))
-        .order_by(desc(Signal.score), desc(Signal.created_at))
+        .where(Signal.last_transaction_date >= datetime.utcnow() - timedelta(days=days))
+        .order_by(*order)
     )
 
     if signal_type:
