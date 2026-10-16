@@ -1,14 +1,15 @@
 """
 security.py
 ───────────
-Hash de contraseñas (bcrypt), tokens JWT y la dependency que exige
-un usuario autenticado en los endpoints protegidos.
+Hash de contraseñas (bcrypt), tokens JWT y las dependencies que exigen
+un usuario autenticado o el token de admin en los endpoints protegidos.
 """
+import secrets
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -58,3 +59,11 @@ async def get_current_user(
     if user is None:
         raise unauthorized
     return user
+
+
+async def require_admin(x_admin_token: str | None = Header(default=None)) -> None:
+    """Dependency: exige la cabecera X-Admin-Token. Sin ADMIN_TOKEN configurado, 404."""
+    if not settings.ADMIN_TOKEN:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not Found")
+    if x_admin_token is None or not secrets.compare_digest(x_admin_token, settings.ADMIN_TOKEN):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Token de admin no válido")

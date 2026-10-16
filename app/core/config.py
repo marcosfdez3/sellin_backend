@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     # (Google Cloud Console). Vacío = login con Google desactivado.
     GOOGLE_CLIENT_ID: str = ""
 
+    # Rutas /api/v1/admin/... — se llaman con la cabecera X-Admin-Token.
+    # Vacío = rutas de admin desactivadas (responden 404).
+    ADMIN_TOKEN: str = ""
+
     class Config:
         env_file = ".env"
 

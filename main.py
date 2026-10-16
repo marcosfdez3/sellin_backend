@@ -18,7 +18,7 @@ from app.core.database import init_db, AsyncSessionLocal
 from app.api.signals import router as signals_router
 from app.api.transactions import transactions_router, companies_router
 from app.api.auth import auth_router
-from app.core.security import get_current_user
+from app.core.security import get_current_user, require_admin
 from app.services.sync_service import SyncService
 from app.schemas.schemas import SyncStatsOut
 
@@ -125,6 +125,10 @@ app.include_router(transactions_router, prefix="/api/v1", dependencies=protected
 app.include_router(companies_router, prefix="/api/v1", dependencies=protected)
 
 
+# Las rutas de admin solo responden con la cabecera X-Admin-Token
+admin_only = [Depends(require_admin)]
+
+
 # ─── Endpoints de utilidad ─────────────────────────────────────────────────────
 
 @app.get("/health")
@@ -132,15 +136,15 @@ async def health():
     return {"status": "ok", "version": "0.1.0"}
 
 
-@app.post("/api/v1/admin/sync", response_model=SyncStatsOut)
+@app.post("/api/v1/admin/sync", response_model=SyncStatsOut, dependencies=admin_only)
 async def trigger_sync():
-    """Dispara un sync manual. Útil durante desarrollo."""
+    """Dispara un sync manual (requiere X-Admin-Token)."""
     async with sync_lock, AsyncSessionLocal() as db:
         stats = await SyncService().sync_recent_filings(db)
         return SyncStatsOut(**stats)
 
 
-@app.get("/api/v1/admin/debug-filing")
+@app.get("/api/v1/admin/debug-filing", dependencies=admin_only)
 async def debug_filing():
     """
     Descarga UN solo Form 4 y devuelve el detalle de cada paso.
@@ -232,7 +236,7 @@ async def debug_filing():
     return result
 
 
-@app.get("/api/v1/admin/debug-index")
+@app.get("/api/v1/admin/debug-index", dependencies=admin_only)
 async def debug_index():
     """Muestra todos los links encontrados en la página de índice de un filing."""
     from lxml import etree
