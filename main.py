@@ -18,6 +18,7 @@ from app.core.database import init_db, AsyncSessionLocal
 from app.api.signals import router as signals_router
 from app.api.transactions import transactions_router, companies_router
 from app.api.auth import auth_router
+from app.api.follows import follows_router
 from app.core.security import get_current_user, require_admin
 from app.services.sync_service import SyncService
 from app.schemas.schemas import SyncStatsOut
@@ -123,6 +124,7 @@ protected = [Depends(get_current_user)]
 app.include_router(signals_router, prefix="/api/v1", dependencies=protected)
 app.include_router(transactions_router, prefix="/api/v1", dependencies=protected)
 app.include_router(companies_router, prefix="/api/v1", dependencies=protected)
+app.include_router(follows_router, prefix="/api/v1", dependencies=protected)
 
 
 # Las rutas de admin solo responden con la cabecera X-Admin-Token

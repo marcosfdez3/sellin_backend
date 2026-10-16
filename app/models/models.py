@@ -1,7 +1,7 @@
 from datetime import datetime
 from sqlalchemy import (
     String, Integer, Float, Boolean, DateTime,
-    ForeignKey, Enum, Text, Index
+    ForeignKey, Enum, Text, Index, UniqueConstraint
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 import enum
@@ -154,6 +154,24 @@ class User(Base):
     # Identificador de la cuenta de Google ("sub" del ID token)
     google_sub: Mapped[str | None] = mapped_column(String(255), unique=True, index=True, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+# ─── Follow ───────────────────────────────────────────────────────────────────
+
+class Follow(Base):
+    """Empresa que un usuario sigue (apartado "Siguiendo" de la app)."""
+    __tablename__ = "follows"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    company: Mapped["Company"] = relationship()
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "company_id", name="uq_follows_user_company"),
+    )
 
 
 # ─── ProcessedFiling ──────────────────────────────────────────────────────────

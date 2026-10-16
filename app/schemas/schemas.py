@@ -63,6 +63,12 @@ class SignalListOut(BaseModel):
     page_size: int
 
 
+class FollowOut(BaseModel):
+    company: CompanyOut
+    followed_at: datetime
+    latest_signal: SignalOut | None  # señal más reciente de la empresa, si tiene
+
+
 class SyncStatsOut(BaseModel):
     filings_fetched: int
     filings_saved: int
