@@ -211,6 +211,7 @@ Transaction.transaction_type.in_([TransactionType.BUY, TransactionType.SELL, Tra
         value_str = self._format_value(total_value)
 
         if is_cluster:
+            action = "compraron" if signal_type == TransactionType.BUY else "vendieron"
             return (
                 f"{num_insiders} insiders de {ticker} {action} "
                 f"un total de {value_str} en los últimos {settings.CLUSTER_DAYS_WINDOW} días"

@@ -234,6 +234,7 @@ class SyncService:
         """
         Limpieza de datos antiguos: los resúmenes guardados antes de ROLE_LABELS
         empiezan por el rol en crudo ("major_shareholder de ..."). Los traduce.
+        También pasa a plural el verbo de los clusters ("2 insiders ... compró").
         """
         updated = 0
         for role, label in ROLE_LABELS.items():
@@ -244,6 +245,18 @@ class SyncService:
                 # y "Director de" contaría como "director de"
                 .where(func.substr(Signal.summary, 1, len(prefix)) == prefix)
                 .values(summary=func.replace(Signal.summary, prefix, f"{label} de "))
+            )
+            updated += result.rowcount or 0
+
+        # "un total de" solo aparece en los resúmenes de clusters
+        for old, new in (
+            (" compró un total de ", " compraron un total de "),
+            (" vendió un total de ", " vendieron un total de "),
+        ):
+            result = await db.execute(
+                update(Signal)
+                .where(Signal.summary.contains(old, autoescape=True))
+                .values(summary=func.replace(Signal.summary, old, new))
             )
             updated += result.rowcount or 0
         await db.commit()
