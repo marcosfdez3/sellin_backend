@@ -20,27 +20,32 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.models.models import (
     Company, Insider, Transaction, Signal,
-    TransactionType, SignalStrength
+    TransactionType, SignalStrength, InsiderRole
 )
 
 logger = logging.getLogger(__name__)
 
-# Pesos por rol — los directivos con más información valen más
+# Pesos por rol — los directivos con más información valen más.
+# Las claves son el rol guardado en la transacción (InsiderRole);
+# "President" del Form 4 se guarda como OFFICER.
 ROLE_WEIGHTS = {
-    "CEO": 1.5,
-    "CFO": 1.4,
-    "COO": 1.3,
-    "President": 1.3,
-    "Director": 1.1,
-    "Major Shareholder >10%": 1.2,
-    "VP": 1.0,
-    "Officer": 1.0,
-    "Other": 0.8,
+    InsiderRole.CEO: 1.5,
+    InsiderRole.CFO: 1.4,
+    InsiderRole.COO: 1.3,
+    InsiderRole.MAJOR_SHAREHOLDER: 1.2,
+    InsiderRole.DIRECTOR: 1.1,
+    InsiderRole.VP: 1.0,
+    InsiderRole.OFFICER: 1.0,
+    InsiderRole.OTHER: 0.8,
 }
 
 # Cómo se muestra cada rol en los resúmenes (los que no están aquí salen tal cual)
 ROLE_LABELS = {
+    "director": "Director",
+    "VP": "Vicepresidente",
+    "officer": "Directivo",
     "major_shareholder": "Accionista mayoritario",
+    "other": "Insider",
 }
 
 
@@ -158,7 +163,7 @@ Transaction.transaction_type.in_([TransactionType.BUY, TransactionType.SELL, Tra
 
         # ── Componente 2: Rol del insider (0-30 pts) ──────────────────────────
         max_role_weight = max(
-            ROLE_WEIGHTS.get(t.insider_role.value if t.insider_role else "Other", 0.8)
+            ROLE_WEIGHTS.get(t.insider_role or InsiderRole.OTHER, ROLE_WEIGHTS[InsiderRole.OTHER])
             for t in transactions
         )
         score += max_role_weight * 20  # max 30 pts para CEO (1.5 * 20)

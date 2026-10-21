@@ -12,6 +12,7 @@ from datetime import date, datetime, timedelta
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 
 from app.core.config import settings
 from app.models.models import (
@@ -236,14 +237,67 @@ class SyncService:
         """
         updated = 0
         for role, label in ROLE_LABELS.items():
+            prefix = f"{role} de "
             result = await db.execute(
                 update(Signal)
-                .where(Signal.summary.startswith(f"{role} de ", autoescape=True))
-                .values(summary=func.replace(Signal.summary, f"{role} de ", f"{label} de "))
+                # substr en vez de LIKE: LIKE no distingue mayúsculas en SQLite
+                # y "Director de" contaría como "director de"
+                .where(func.substr(Signal.summary, 1, len(prefix)) == prefix)
+                .values(summary=func.replace(Signal.summary, prefix, f"{label} de "))
             )
             updated += result.rowcount or 0
         await db.commit()
         return updated
+
+    async def recompute_signal_scores(self, db: AsyncSession) -> int:
+        """
+        Recalcula score y fuerza de las señales guardadas con la fórmula actual
+        (p. ej. tras corregir ROLE_WEIGHTS). Solo escribe las que cambian, así
+        que repetirlo en cada arranque no hace nada.
+        """
+        signals = (await db.scalars(select(Signal))).all()
+        if not signals:
+            return 0
+
+        # Las mismas transacciones que usa SignalEngine para crear señales,
+        # sin cargar el XML de cada una
+        rows = (await db.scalars(
+            select(Transaction)
+            .options(load_only(
+                Transaction.company_id, Transaction.insider_id, Transaction.transaction_type,
+                Transaction.transaction_date, Transaction.insider_role, Transaction.shares,
+                Transaction.shares_owned_after, Transaction.total_value,
+            ))
+            .where(
+                Transaction.company_id.in_({s.company_id for s in signals}),
+                Transaction.transaction_type.in_([TransactionType.BUY, TransactionType.SELL]),
+                Transaction.transaction_date >= min(s.first_transaction_date for s in signals),
+                Transaction.is_10b51_plan == False,
+                Transaction.is_derivative == False,
+            )
+            .order_by(Transaction.transaction_date.asc())
+        )).all()
+        by_group: dict[tuple, list[Transaction]] = {}
+        for t in rows:
+            if (t.total_value or 0) >= settings.MIN_TRANSACTION_VALUE_USD:
+                by_group.setdefault((t.company_id, t.transaction_type), []).append(t)
+
+        engine = self.signal_engine
+        changed = 0
+        for s in signals:
+            txs = [
+                t for t in by_group.get((s.company_id, s.signal_type), [])
+                if s.first_transaction_date <= t.transaction_date <= s.last_transaction_date
+            ]
+            if not txs:
+                continue
+            score = engine._calculate_score(txs, s.total_value, s.is_cluster, db)
+            strength = engine._determine_strength(score, s.total_value, s.is_cluster)
+            if score != s.score or strength != s.strength:
+                s.score, s.strength = score, strength
+                changed += 1
+        await db.commit()
+        return changed
 
     # ─── Helpers BD ────────────────────────────────────────────────────────────
 
