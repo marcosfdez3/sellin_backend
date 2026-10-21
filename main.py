@@ -70,6 +70,9 @@ async def lifespan(app: FastAPI):
         removed = await SyncService().remove_duplicate_signals(db)
         if removed:
             logger.info(f"Removed {removed} duplicated signals")
+        relabeled = await SyncService().relabel_signal_summaries(db)
+        if relabeled:
+            logger.info(f"Relabeled roles in {relabeled} signal summaries")
 
     # Los syncs corren en segundo plano: la API responde desde el primer momento
     now = datetime.now(timezone.utc)

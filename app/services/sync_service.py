@@ -10,7 +10,7 @@ Cada filing procesado se apunta en ProcessedFiling para no descargarlo dos veces
 import logging
 from datetime import date, datetime, timedelta
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -19,7 +19,7 @@ from app.models.models import (
 )
 from app.services.edgar_fetcher import EdgarFetcher
 from app.services.form4_parser import Form4Parser, ParsedForm4, ParsedInsider
-from app.services.signal_engine import SignalEngine
+from app.services.signal_engine import ROLE_LABELS, SignalEngine
 
 logger = logging.getLogger(__name__)
 
@@ -228,6 +228,22 @@ class SyncService:
         result = await db.execute(delete(Signal).where(Signal.id.not_in(keep)))
         await db.commit()
         return result.rowcount or 0
+
+    async def relabel_signal_summaries(self, db: AsyncSession) -> int:
+        """
+        Limpieza de datos antiguos: los resúmenes guardados antes de ROLE_LABELS
+        empiezan por el rol en crudo ("major_shareholder de ..."). Los traduce.
+        """
+        updated = 0
+        for role, label in ROLE_LABELS.items():
+            result = await db.execute(
+                update(Signal)
+                .where(Signal.summary.startswith(f"{role} de ", autoescape=True))
+                .values(summary=func.replace(Signal.summary, f"{role} de ", f"{label} de "))
+            )
+            updated += result.rowcount or 0
+        await db.commit()
+        return updated
 
     # ─── Helpers BD ────────────────────────────────────────────────────────────
 

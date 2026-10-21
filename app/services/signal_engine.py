@@ -38,6 +38,11 @@ ROLE_WEIGHTS = {
     "Other": 0.8,
 }
 
+# Cómo se muestra cada rol en los resúmenes (los que no están aquí salen tal cual)
+ROLE_LABELS = {
+    "major_shareholder": "Accionista mayoritario",
+}
+
 
 class SignalEngine:
 
@@ -209,6 +214,7 @@ Transaction.transaction_type.in_([TransactionType.BUY, TransactionType.SELL, Tra
         # Transacción individual
         t = transactions[0]
         role = t.insider_role.value if t.insider_role else "insider"
+        role = ROLE_LABELS.get(role, role)
         return f"{role} de {ticker} {action} {value_str} en acciones"
 
     def _format_value(self, value: float) -> str:
