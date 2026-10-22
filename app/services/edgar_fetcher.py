@@ -329,6 +329,44 @@ class EdgarFetcher:
 
         return filings
 
+    # ─── 13F (carteras de grandes inversores) ─────────────────────────────────
+
+    async def get_13f_filings(self, cik: str) -> tuple[str, list[dict]]:
+        """
+        Nombre del fondo y sus 13F-HR, del más reciente al más antiguo
+        (sin enmiendas).
+        """
+        url = f"{settings.EDGAR_DATA_URL}/submissions/CIK{cik.zfill(10)}.json"
+        data = (await self._get(url)).json()
+        recent = data.get("filings", {}).get("recent", {})
+        return data.get("name", ""), [
+            {"accession_number": acc, "report_date": report, "filed_date": filed}
+            for form, acc, report, filed in zip(
+                recent.get("form", []),
+                recent.get("accessionNumber", []),
+                recent.get("reportDate", []),
+                recent.get("filingDate", []),
+            )
+            if form == "13F-HR"
+        ]
+
+    async def get_13f_information_table(self, cik: str, accession: str) -> str:
+        """XML con las posiciones de un 13F (su "information table")."""
+        base = (
+            f"{settings.EDGAR_BASE_URL}/Archives/edgar/data/"
+            f"{cik.lstrip('0')}/{accession.replace('-', '')}"
+        )
+        items = (await self._get(f"{base}/index.json")).json()["directory"]["item"]
+        xml_files = [
+            i for i in items
+            if i["name"].lower().endswith(".xml") and i["name"].lower() != "primary_doc.xml"
+        ]
+        if not xml_files:
+            raise ValueError(f"13F {accession} sin information table")
+        # primary_doc.xml es la portada; si hubiera varios XML más, la tabla es la más grande
+        name = max(xml_files, key=lambda i: int(i.get("size") or 0))["name"]
+        return (await self._get(f"{base}/{name}")).text
+
     async def search_company_cik(self, ticker: str) -> str | None:
         """Busca el CIK de una empresa por su ticker."""
         try:

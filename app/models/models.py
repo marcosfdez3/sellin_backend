@@ -174,6 +174,39 @@ class Follow(Base):
     )
 
 
+# ─── Grandes inversores (13F) ─────────────────────────────────────────────────
+
+class InvestorMove(Base):
+    """
+    Movimiento de un gran inversor entre sus dos últimos 13F (compra nueva,
+    aumento, reducción o venta total). Se recalculan todos cada día.
+    """
+    __tablename__ = "investor_moves"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    investor: Mapped[str] = mapped_column(String(100))      # "Warren Buffett"
+    fund: Mapped[str] = mapped_column(String(255))          # "BERKSHIRE HATHAWAY INC"
+    cusip: Mapped[str] = mapped_column(String(9))
+    ticker: Mapped[str | None] = mapped_column(String(16))
+    issuer: Mapped[str] = mapped_column(String(255))        # nombre de la empresa
+    action: Mapped[str] = mapped_column(String(10))         # new | add | reduce | exit
+    value_change: Mapped[float] = mapped_column(Float)      # USD; negativo si reduce o vende
+    pct_change: Mapped[float | None] = mapped_column(Float)  # % de acciones (add/reduce)
+    period: Mapped[datetime] = mapped_column(DateTime)      # trimestre del 13F más reciente
+    filed_at: Mapped[datetime] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class CusipTicker(Base):
+    """CUSIP → ticker resuelto con OpenFIGI (se pide una sola vez por CUSIP)."""
+    __tablename__ = "cusip_tickers"
+
+    cusip: Mapped[str] = mapped_column(String(9), primary_key=True)
+    ticker: Mapped[str | None] = mapped_column(String(16))  # None si OpenFIGI no lo conoce
+    name: Mapped[str | None] = mapped_column(String(255))
+    resolved_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 # ─── ProcessedFiling ──────────────────────────────────────────────────────────
 
 class ProcessedFiling(Base):

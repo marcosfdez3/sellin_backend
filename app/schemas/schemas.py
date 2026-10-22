@@ -69,6 +69,20 @@ class FollowOut(BaseModel):
     latest_signal: SignalOut | None  # señal más reciente de la empresa, si tiene
 
 
+class InvestorMoveOut(BaseModel):
+    investor: str
+    fund: str
+    ticker: str | None
+    issuer: str
+    action: str             # new | add | reduce | exit
+    value_change: float     # USD; negativo si reduce o vende
+    pct_change: float | None
+    period: datetime
+    filed_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class SyncStatsOut(BaseModel):
     filings_fetched: int
     filings_saved: int

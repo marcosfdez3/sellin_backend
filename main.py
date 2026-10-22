@@ -19,7 +19,9 @@ from app.api.signals import router as signals_router
 from app.api.transactions import transactions_router, companies_router
 from app.api.auth import auth_router
 from app.api.follows import follows_router
+from app.api.investors import investors_router
 from app.core.security import get_current_user, require_admin
+from app.services.investor_moves import InvestorMovesService
 from app.services.sync_service import SyncService
 from app.schemas.schemas import SyncStatsOut
 
@@ -58,6 +60,17 @@ async def run_backfill_job():
                 await SyncService().sync_day(db, day)
             except Exception as e:
                 logger.error(f"Backfill {day} failed: {e}")
+
+
+async def run_investor_moves_job():
+    """Recalcula los movimientos de los grandes inversores a partir de sus 13F."""
+    service = InvestorMovesService()
+    # Las descargas de EDGAR van con el lock para no pasar su límite de peticiones
+    async with sync_lock:
+        moves = await service.fetch_moves()
+    async with AsyncSessionLocal() as db:
+        saved = await service.save(db, moves)
+    logger.info(f"Investor moves updated: {saved}")
 
 
 @asynccontextmanager
@@ -99,6 +112,17 @@ async def lifespan(app: FastAPI):
         replace_existing=True,
         next_run_time=now + timedelta(seconds=30),
     )
+    # Los 13F salen cada trimestre; con mirar una vez al día basta
+    scheduler.add_job(
+        run_investor_moves_job,
+        "cron",
+        hour=7,
+        minute=0,
+        timezone="UTC",
+        id="investor_moves",
+        replace_existing=True,
+        next_run_time=now + timedelta(seconds=60),
+    )
     scheduler.start()
 
     yield
@@ -131,6 +155,7 @@ app.include_router(signals_router, prefix="/api/v1", dependencies=protected)
 app.include_router(transactions_router, prefix="/api/v1", dependencies=protected)
 app.include_router(companies_router, prefix="/api/v1", dependencies=protected)
 app.include_router(follows_router, prefix="/api/v1", dependencies=protected)
+app.include_router(investors_router, prefix="/api/v1", dependencies=protected)
 
 
 # Las rutas de admin solo responden con la cabecera X-Admin-Token
