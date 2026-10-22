@@ -88,7 +88,12 @@ async def popular_companies(
     limit: int = Query(10, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
 ):
-    """Empresas con más compras y ventas de insiders en los últimos días."""
+    """
+    Empresas con más actividad de insiders en los últimos días: primero las
+    que tienen más insiders distintos operando, luego más operaciones y más
+    importe. Las ventas automáticas (planes 10b5-1) no cuentan: un solo
+    directivo vendiendo en muchos tramos no es "popular".
+    """
     since = datetime.utcnow() - timedelta(days=days)
     value = func.coalesce(Transaction.total_value, 0)
     rows = (await db.execute(
@@ -103,9 +108,10 @@ async def popular_companies(
             Transaction.transaction_date >= since,
             Transaction.transaction_type.in_([TransactionType.BUY, TransactionType.SELL]),
             Transaction.is_derivative == False,
+            Transaction.is_10b51_plan == False,
         )
         .group_by(Transaction.company_id)
-        .order_by(desc("num_transactions"), desc(func.sum(value)))
+        .order_by(desc("num_insiders"), desc("num_transactions"), desc(func.sum(value)))
         .limit(limit)
     )).all()
 
