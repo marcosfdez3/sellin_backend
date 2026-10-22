@@ -12,6 +12,22 @@ class CompanyOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class CompanySearchOut(BaseModel):
+    id: int | None  # None si aún no está en nuestra base de datos
+    cik: str
+    ticker: str | None
+    name: str
+
+
+class CompanyActivityOut(BaseModel):
+    """Empresa con su actividad de insiders en los últimos días (acciones populares)."""
+    company: CompanyOut
+    num_transactions: int
+    num_insiders: int
+    buy_value: float
+    sell_value: float
+
+
 class InsiderOut(BaseModel):
     id: int
     cik: str
@@ -54,6 +70,13 @@ class SignalOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class CompanyOverviewOut(BaseModel):
+    """Ficha de una empresa: datos, señales recientes y últimas transacciones."""
+    company: CompanyOut
+    signals: list[SignalOut]
+    transactions: list[TransactionOut]
 
 
 class SignalListOut(BaseModel):
