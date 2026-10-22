@@ -19,7 +19,7 @@ from app.models.models import (
     Company, Insider, ProcessedFiling, Signal, Transaction, TransactionType, InsiderRole,
 )
 from app.services.edgar_fetcher import EdgarFetcher
-from app.services.form4_parser import Form4Parser, ParsedForm4, ParsedInsider
+from app.services.form4_parser import Form4Parser, ParsedForm4, ParsedInsider, normalize_ticker
 from app.services.signal_engine import ROLE_LABELS, SignalEngine
 
 logger = logging.getLogger(__name__)
@@ -261,6 +261,20 @@ class SyncService:
             updated += result.rowcount or 0
         await db.commit()
         return updated
+
+    async def normalize_company_tickers(self, db: AsyncSession) -> int:
+        """
+        Limpieza de datos antiguos: tickers guardados con el mercado delante
+        o en minúsculas ("NYSE: VTEX"). Solo escribe los que cambian.
+        """
+        changed = 0
+        for company in (await db.scalars(select(Company).where(Company.ticker.is_not(None)))).all():
+            ticker = normalize_ticker(company.ticker)
+            if ticker != company.ticker:
+                company.ticker = ticker
+                changed += 1
+        await db.commit()
+        return changed
 
     async def recompute_signal_scores(self, db: AsyncSession) -> int:
         """

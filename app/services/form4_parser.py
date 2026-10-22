@@ -89,6 +89,19 @@ class ParsedForm4:
         )
 
 
+
+def normalize_ticker(raw: str | None) -> str | None:
+    """
+    Algunos Form 4 traen el ticker con el mercado delante o en minúsculas
+    ("NYSE: VTEX", "nasdaq:abc"). Deja solo el símbolo: "VTEX".
+    """
+    if not raw:
+        return None
+    ticker = raw.split(":")[-1].strip().upper()
+    if not ticker or ticker in {"NONE", "N/A", "NA"}:
+        return None
+    return ticker
+
 class Form4Parser:
     """Parsea XML de Form 4 en objetos Python tipados."""
 
@@ -122,7 +135,7 @@ class Form4Parser:
         issuer = root.find("issuer")
         company_cik = self._text(issuer, "issuerCik", "").zfill(10)
         company_name = self._text(issuer, "issuerName", "Unknown")
-        company_ticker = self._text(issuer, "issuerTradingSymbol")
+        company_ticker = normalize_ticker(self._text(issuer, "issuerTradingSymbol"))
 
         # ── Insiders ──────────────────────────────────────────────────────────
         insiders = []

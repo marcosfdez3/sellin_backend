@@ -86,6 +86,9 @@ async def lifespan(app: FastAPI):
         relabeled = await SyncService().relabel_signal_summaries(db)
         if relabeled:
             logger.info(f"Relabeled roles in {relabeled} signal summaries")
+        fixed = await SyncService().normalize_company_tickers(db)
+        if fixed:
+            logger.info(f"Normalized {fixed} company tickers")
         rescored = await SyncService().recompute_signal_scores(db)
         if rescored:
             logger.info(f"Recomputed score of {rescored} signals")
