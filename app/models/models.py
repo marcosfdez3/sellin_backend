@@ -156,6 +156,23 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+# ─── PasswordResetCode ────────────────────────────────────────────────────────
+
+class PasswordResetCode(Base):
+    """
+    Código de 6 cifras para restablecer la contraseña. Se guarda solo su hash.
+    Como mucho uno por usuario: pedir otro borra el anterior.
+    """
+    __tablename__ = "password_reset_codes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    code_hash: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 # ─── Follow ───────────────────────────────────────────────────────────────────
 
 class Follow(Base):

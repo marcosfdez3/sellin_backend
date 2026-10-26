@@ -16,8 +16,15 @@ from fastapi import HTTPException, status
 
 
 class LoginRateLimiter:
-    def __init__(self, max_failed_per_email: int, max_attempts_per_ip: int, window_seconds: int):
+    def __init__(
+        self,
+        max_failed_per_email: int,
+        max_attempts_per_ip: int,
+        window_seconds: int,
+        email_limit_message: str = "Demasiados intentos fallidos con este email",
+    ):
         self.max_failed_per_email = max_failed_per_email
+        self.email_limit_message = email_limit_message
         self.max_attempts_per_ip = max_attempts_per_ip
         self.window = window_seconds
         self._failed_by_email: dict[str, deque[float]] = defaultdict(deque)
@@ -49,7 +56,7 @@ class LoginRateLimiter:
             email_events = self._failed_by_email[email]
             self._prune(email_events, now)
             if len(email_events) >= self.max_failed_per_email:
-                self._reject(email_events, now, "Demasiados intentos fallidos con este email")
+                self._reject(email_events, now, self.email_limit_message)
 
         ip_events.append(now)
 

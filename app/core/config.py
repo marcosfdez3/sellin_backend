@@ -49,6 +49,15 @@ class Settings(BaseSettings):
     # (Google Cloud Console). Vacío = login con Google desactivado.
     GOOGLE_CLIENT_ID: str = ""
 
+    # Recuperar contraseña: el código se envía por email con Brevo (brevo.com).
+    # MAIL_SENDER_EMAIL tiene que ser un remitente verificado en Brevo.
+    # Sin BREVO_API_KEY no se envía nada: con DEBUG el código sale en el log.
+    BREVO_API_KEY: str = ""
+    MAIL_SENDER_EMAIL: str = ""
+    MAIL_SENDER_NAME: str = "Sellin"
+    PASSWORD_RESET_MINUTES: int = 15     # validez del código
+    PASSWORD_RESET_MAX_ATTEMPTS: int = 5  # intentos con un mismo código
+
     # Rutas /api/v1/admin/... — se llaman con la cabecera X-Admin-Token.
     # Vacío = rutas de admin desactivadas (responden 404).
     ADMIN_TOKEN: str = ""

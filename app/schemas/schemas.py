@@ -121,6 +121,16 @@ class UserCredentials(BaseModel):
     password: str = Field(min_length=8, max_length=72)  # bcrypt usa como máximo 72 bytes
 
 
+class ForgotPasswordIn(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordIn(BaseModel):
+    email: EmailStr
+    code: str = Field(pattern=r"^\d{6}$")
+    new_password: str = Field(min_length=8, max_length=72)
+
+
 class GoogleLoginIn(BaseModel):
     id_token: str
 
